@@ -1,0 +1,55 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh api:*)"'
+          prompt: |
+            Eres un triager de issues para el repo josepato/claude-tetris, un juego de Tetris en
+            JavaScript vanilla sin build tooling (index.html, style.css, game.js).
+
+            Issue: #${{ github.event.issue.number }}
+            Título: ${{ github.event.issue.title }}
+
+            Tareas:
+            1. Lee el issue completo con `gh issue view ${{ github.event.issue.number }}`.
+            2. Etiqueta el issue usando SOLO estas labels existentes (no crees labels nuevas):
+               bug, enhancement, question, documentation, accessibility, duplicate,
+               invalid, wontfix, help wanted, good first issue.
+               Aplica 0 o más según corresponda con:
+               `gh issue edit ${{ github.event.issue.number }} --add-label "..."`.
+               No quites labels que ya tenga el issue salvo que sean claramente incorrectas.
+            3. Publica o actualiza un ÚNICO comentario de diagnóstico:
+               - Primero busca si ya existe un comentario tuyo anterior en este issue que
+                 contenga el marcador oculto `<!-- claude-issue-triage -->`
+                 (usa `gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments`).
+               - Si existe, actualízalo con `gh api -X PATCH repos/${{ github.repository }}/issues/comments/<id> -f body='...'`
+                 en vez de crear uno nuevo.
+               - Si no existe, créalo con `gh issue comment ${{ github.event.issue.number }} --body '...'`.
+               - El comentario debe empezar con la línea `<!-- claude-issue-triage -->` (oculta en
+                 el render) y luego incluir, en español:
+                 * Causa probable del problema.
+                 * Subsistema/archivo/función afectado en game.js (por ejemplo: board/collide,
+                   PIECES/randomPiece, rotateCW/tryRotate y wall-kicks, loop/dropInterval,
+                   lockPiece/clearLines, draw/drawNext, etc.), citando nombres reales cuando aplique.
+                 * Próximos pasos sugeridos para implementar el fix.
+               - NO escribas ni propongas parches de código, y NO modifiques archivos del repo.
+                 Este es solo un diagnóstico para que el mantenedor implemente la solución después.
