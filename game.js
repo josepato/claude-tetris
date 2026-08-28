@@ -28,6 +28,18 @@ const PIECES = [
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
 
+const POWERUP_INFO = {
+  bomb: { color: '#ff3b3b', icon: '💣' },      // destruye un área 3x3
+  lightning: { color: '#ffe14d', icon: '⚡' }, // destruye una fila o columna completa
+  gravity: { color: '#9b59ff', icon: '🌀' },   // compacta los huecos del tablero
+  ink: { color: '#2b1b40', icon: '🎨' },       // bloquea la vista 5 segundos
+};
+const POWERUP_TYPES = Object.keys(POWERUP_INFO);
+const POWERUP_CHANCE = 0.10;
+const POWERUP_COOLDOWN = 5; // piezas mínimas entre power-ups
+const POWERUP_SPEED_MULTIPLIER = 3; // caen 3x más rápido que una pieza normal
+const INK_DURATION = 5000;
+
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
 const nextCanvas = document.getElementById('next-canvas');
@@ -40,7 +52,7 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, piecesSinceLastPowerUp, inkActiveUntil;
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -50,6 +62,30 @@ function randomPiece() {
   const type = Math.floor(Math.random() * 7) + 1;
   const shape = PIECES[type].map(row => [...row]);
   return { type, shape, x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2), y: 0 };
+}
+
+function randomPowerUp() {
+  const powerType = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+  const pu = { isPowerUp: true, powerType, shape: [[1]], x: Math.floor(Math.random() * COLS), y: 0 };
+  if (powerType === 'bomb') {
+    pu.targetRow = Math.floor(Math.random() * ROWS);
+    pu.targetCol = Math.floor(Math.random() * COLS);
+  } else if (powerType === 'lightning') {
+    pu.orientation = Math.random() < 0.5 ? 'row' : 'col';
+    pu.targetIndex = pu.orientation === 'row'
+      ? Math.floor(Math.random() * ROWS)
+      : Math.floor(Math.random() * COLS);
+  }
+  return pu;
+}
+
+function randomSpawnable() {
+  piecesSinceLastPowerUp++;
+  if (piecesSinceLastPowerUp >= POWERUP_COOLDOWN && Math.random() < POWERUP_CHANCE) {
+    piecesSinceLastPowerUp = 0;
+    return randomPowerUp();
+  }
+  return randomPiece();
 }
 
 function collide(shape, ox, oy) {
@@ -91,6 +127,44 @@ function merge() {
     for (let c = 0; c < current.shape[r].length; c++)
       if (current.shape[r][c])
         board[current.y + r][current.x + c] = current.shape[r][c];
+}
+
+function activatePowerUp(pu) {
+  switch (pu.powerType) {
+    case 'bomb': activateBomb(pu); break;
+    case 'lightning': activateLightning(pu); break;
+    case 'gravity': activateGravity(); break;
+    case 'ink': activateInk(); break;
+  }
+}
+
+function activateBomb(pu) {
+  for (let r = pu.targetRow - 1; r <= pu.targetRow + 1; r++)
+    for (let c = pu.targetCol - 1; c <= pu.targetCol + 1; c++)
+      if (r >= 0 && r < ROWS && c >= 0 && c < COLS) board[r][c] = 0;
+}
+
+function activateLightning(pu) {
+  if (pu.orientation === 'row') {
+    board[pu.targetIndex] = new Array(COLS).fill(0);
+  } else {
+    for (let r = 0; r < ROWS; r++) board[r][pu.targetIndex] = 0;
+  }
+}
+
+function activateGravity() {
+  for (let c = 0; c < COLS; c++) {
+    const values = [];
+    for (let r = 0; r < ROWS; r++)
+      if (board[r][c] !== 0) values.push(board[r][c]);
+    const padding = ROWS - values.length;
+    for (let r = 0; r < ROWS; r++)
+      board[r][c] = r < padding ? 0 : values[r - padding];
+  }
+}
+
+function activateInk() {
+  inkActiveUntil = performance.now() + INK_DURATION;
 }
 
 function clearLines() {
@@ -136,14 +210,18 @@ function softDrop() {
 }
 
 function lockPiece() {
-  merge();
+  if (current.isPowerUp) {
+    activatePowerUp(current);
+  } else {
+    merge();
+  }
   clearLines();
   spawn();
 }
 
 function spawn() {
   current = next;
-  next = randomPiece();
+  next = randomSpawnable();
   if (collide(current.shape, current.x, current.y)) {
     endGame();
   }
@@ -165,6 +243,20 @@ function drawBlock(context, x, y, colorIndex, size, alpha) {
   // highlight
   context.fillStyle = 'rgba(255,255,255,0.12)';
   context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  context.globalAlpha = 1;
+}
+
+function drawPowerUpBlock(context, x, y, powerType, size, alpha) {
+  const info = POWERUP_INFO[powerType];
+  context.globalAlpha = alpha ?? 1;
+  context.fillStyle = info.color;
+  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+  context.fillStyle = 'rgba(255,255,255,0.12)';
+  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  context.font = `${Math.floor(size * 0.6)}px sans-serif`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(info.icon, x * size + size / 2, y * size + size / 2 + 1);
   context.globalAlpha = 1;
 }
 
@@ -194,22 +286,42 @@ function draw() {
     for (let c = 0; c < COLS; c++)
       drawBlock(ctx, c, r, board[r][c], BLOCK);
 
-  // ghost
-  const gy = ghostY();
-  for (let r = 0; r < current.shape.length; r++)
-    for (let c = 0; c < current.shape[r].length; c++)
-      if (current.shape[r][c])
-        drawBlock(ctx, current.x + c, gy + r, current.shape[r][c], BLOCK, 0.2);
+  if (current.isPowerUp) {
+    const gy = ghostY();
+    drawPowerUpBlock(ctx, current.x, gy, current.powerType, BLOCK, 0.25);
+    drawPowerUpBlock(ctx, current.x, current.y, current.powerType, BLOCK);
+  } else {
+    // ghost
+    const gy = ghostY();
+    for (let r = 0; r < current.shape.length; r++)
+      for (let c = 0; c < current.shape[r].length; c++)
+        if (current.shape[r][c])
+          drawBlock(ctx, current.x + c, gy + r, current.shape[r][c], BLOCK, 0.2);
 
-  // current piece
-  for (let r = 0; r < current.shape.length; r++)
-    for (let c = 0; c < current.shape[r].length; c++)
-      drawBlock(ctx, current.x + c, current.y + r, current.shape[r][c], BLOCK);
+    // current piece
+    for (let r = 0; r < current.shape.length; r++)
+      for (let c = 0; c < current.shape[r].length; c++)
+        drawBlock(ctx, current.x + c, current.y + r, current.shape[r][c], BLOCK);
+  }
+
+  // tinte: bloquea la vista del tablero por unos segundos
+  if (inkActiveUntil) {
+    if (performance.now() < inkActiveUntil) {
+      ctx.fillStyle = 'rgba(8, 6, 16, 0.98)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else {
+      inkActiveUntil = null;
+    }
+  }
 }
 
 function drawNext() {
   const NB = 30;
   nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  if (next.isPowerUp) {
+    drawPowerUpBlock(nextCtx, 1, 1, next.powerType, NB);
+    return;
+  }
   const shape = next.shape;
   const offX = Math.floor((4 - shape[0].length) / 2);
   const offY = Math.floor((4 - shape.length) / 2);
@@ -244,7 +356,8 @@ function loop(ts) {
   const dt = ts - lastTime;
   lastTime = ts;
   dropAccum += dt;
-  if (dropAccum >= dropInterval) {
+  const effectiveInterval = current.isPowerUp ? dropInterval / POWERUP_SPEED_MULTIPLIER : dropInterval;
+  if (dropAccum >= effectiveInterval) {
     dropAccum = 0;
     if (!collide(current.shape, current.x, current.y + 1)) {
       current.y++;
@@ -266,7 +379,9 @@ function init() {
   dropInterval = 1000;
   dropAccum = 0;
   lastTime = performance.now();
-  next = randomPiece();
+  piecesSinceLastPowerUp = 0;
+  inkActiveUntil = null;
+  next = randomSpawnable();
   spawn();
   updateHUD();
   overlay.classList.add('hidden');
@@ -277,6 +392,19 @@ function init() {
 document.addEventListener('keydown', e => {
   if (e.code === 'KeyP') { togglePause(); return; }
   if (paused || gameOver) return;
+  if (current.isPowerUp) {
+    switch (e.code) {
+      case 'ArrowDown':
+        softDrop();
+        break;
+      case 'Space':
+        e.preventDefault();
+        hardDrop();
+        break;
+    }
+    updateHUD();
+    return;
+  }
   switch (e.code) {
     case 'ArrowLeft':
       if (!collide(current.shape, current.x - 1, current.y)) current.x--;
