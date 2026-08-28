@@ -159,3 +159,83 @@ kbd {
 #restart-btn:hover {
   background: #9bbdff;
 }
+
+/* ---- Skin select ---- */
+#skin-select {
+  background: #22223a;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 12px;
+  padding: 6px 8px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* ---- Temas visuales ---- */
+body.theme-retro {
+  /* Estado base: sin overrides, es el estilo actual del juego. */
+}
+
+body.theme-neon {
+  background: #000;
+}
+
+body.theme-neon .game-title {
+  text-shadow: 0 0 8px rgba(122, 162, 247, 0.8);
+}
+
+body.theme-neon #board,
+body.theme-neon #next-canvas {
+  box-shadow: 0 0 20px rgba(122, 162, 247, 0.6), 0 0 40px rgba(122, 162, 247, 0.3);
+  border-color: #7aa2f7;
+}
+
+body.theme-neon .value {
+  text-shadow: 0 0 6px rgba(122, 162, 247, 0.7);
+}
+
+body.theme-pastel {
+  background: #fdf6f0;
+  color: #5a5a6e;
+}
+
+body.theme-pastel .game-title {
+  color: #a78bfa;
+}
+
+body.theme-pastel .label {
+  color: #b0a8c0;
+}
+
+body.theme-pastel .value {
+  color: #a78bfa;
+}
+
+body.theme-pastel #board,
+body.theme-pastel #next-canvas {
+  background: #fff9f5;
+  border-color: #e6d9f0;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.08);
+}
+
+body.theme-pastel .controls li {
+  color: #9a92a8;
+}
+
+body.theme-pastel kbd {
+  background: #f0e8fa;
+  border-color: #e0d0f0;
+  color: #7a6f90;
+}
+
+body.theme-pastel #skin-select {
+  background: #f0e8fa;
+  border-color: #e0d0f0;
+  color: #5a5a6e;
+}
+
+body.theme-pixel #board,
+body.theme-pixel #next-canvas {
+  image-rendering: pixelated;
+}
